@@ -52,6 +52,8 @@ jobs:
       # 6. Generar código automático para los submódulos (scrobblenaut)
       - name: Build scrobblenaut generated files
         run: |
+          # Modificar la restricción de SDK a >=3.8.0 para habilitar soporte de null-aware-elements en Dart
+          sed -i 's/sdk: ">=3.0.0 <4.0.0"/sdk: ">=3.8.0 <4.0.0"/g' scrobblenaut/pubspec.yaml
           cd scrobblenaut
           flutter pub get
           dart run build_runner build --delete-conflicting-outputs
