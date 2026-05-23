@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:equalizer_flutter/equalizer_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -22,18 +21,22 @@ import '../api/deezer.dart';
 import '../api/definitions.dart';
 import '../settings.dart';
 import '../translations.i18n.dart';
-import '../ui/android_auto.dart';
 import '../utils/mediaitem_converter.dart';
+// Conditional imports for Android-only components
+import '../ui/android_auto.dart'
+    if (dart.library.ffi) '../ui/android_auto_stub.dart';
+import 'package:equalizer_flutter/equalizer_flutter.dart'
+    if (dart.library.ffi) '../utils/equalizer_stub.dart';
 
 Future<AudioPlayerHandler> initAudioService() async {
   return await AudioService.init(
     builder: () => AudioPlayerHandler(),
-    config: const AudioServiceConfig(
+    config: AudioServiceConfig(
         androidNotificationChannelId: 'r.r.refreezer.audio',
         androidNotificationChannelName: 'ReFreezer',
-        androidNotificationOngoing: true,
-        androidStopForegroundOnPause: true,
-        androidNotificationClickStartsActivity: true,
+        androidNotificationOngoing: Platform.isAndroid,
+        androidStopForegroundOnPause: Platform.isAndroid,
+        androidNotificationClickStartsActivity: Platform.isAndroid,
         androidNotificationChannelDescription: 'ReFreezer',
         androidNotificationIcon: 'drawable/ic_logo'),
   );
@@ -49,8 +52,8 @@ class AudioPlayerHandler extends BaseAudioHandler
   int? _prevAudioSession;
   bool _equalizerOpen = false;
 
-  final AndroidAuto _androidAuto =
-      AndroidAuto(); // Create an instance of AndroidAuto
+  // Android Auto — only used on Android
+  late final _androidAuto = Platform.isAndroid ? AndroidAuto() : null;
 
   // for some reason, dart can decide not to respect the 'await' due to weird task sceduling ...
   final Completer<void> _playerInitializedCompleter = Completer<void>();
@@ -183,30 +186,26 @@ class AudioPlayerHandler extends BaseAudioHandler
       }
     });
 
-    //Audio session
-    _player.androidAudioSessionIdStream.listen((session) {
-      if (!settings.enableEqualizer) return;
-
-      //Save
-      _prevAudioSession = _audioSession;
-      _audioSession = session;
-      if (_audioSession == null) return;
-
-      //Open EQ
-      if (!_equalizerOpen) {
-        EqualizerFlutter.open(session!);
-        _equalizerOpen = true;
-        return;
-      }
-
-      //Change session id
-      if (_prevAudioSession != _audioSession) {
-        if (_prevAudioSession != null) {
-          EqualizerFlutter.removeAudioSessionId(_prevAudioSession!);
+    //Audio session (Equalizer) — Android only
+    if (Platform.isAndroid) {
+      _player.androidAudioSessionIdStream.listen((session) {
+        if (!settings.enableEqualizer) return;
+        _prevAudioSession = _audioSession;
+        _audioSession = session;
+        if (_audioSession == null) return;
+        if (!_equalizerOpen) {
+          EqualizerFlutter.open(session!);
+          _equalizerOpen = true;
+          return;
         }
-        EqualizerFlutter.setAudioSessionId(_audioSession!);
-      }
-    });
+        if (_prevAudioSession != _audioSession) {
+          if (_prevAudioSession != null) {
+            EqualizerFlutter.removeAudioSessionId(_prevAudioSession!);
+          }
+          EqualizerFlutter.setAudioSessionId(_audioSession!);
+        }
+      });
+    }
 
     // When 75% of item played, save loggedTrackId to cache & log listen (if enabled)
     AudioService.position.listen((position) {
@@ -242,10 +241,9 @@ class AudioPlayerHandler extends BaseAudioHandler
   @override
   Future<void> playFromMediaId(String mediaId,
       [Map<String, dynamic>? extras]) async {
-    // Check if the mediaId is for Android Auto
-    if (mediaId.startsWith(AndroidAuto.prefix)) {
-      // Forward the event to Android Auto
-      await _androidAuto.playItem(mediaId);
+    // Check if the mediaId is for Android Auto (Android only)
+    if (Platform.isAndroid && mediaId.startsWith(AndroidAuto.prefix)) {
+      await _androidAuto?.playItem(mediaId);
       return;
     }
 
@@ -402,8 +400,12 @@ class AudioPlayerHandler extends BaseAudioHandler
     String parentMediaId, [
     Map<String, dynamic>? options,
   ]) async {
-    //Android audio callback
-    return _androidAuto.getScreen(parentMediaId);
+    // Android Auto media browser — Android only
+    if (Platform.isAndroid && _androidAuto != null) {
+      final items = await _androidAuto!.getScreen(parentMediaId);
+      return items;
+    }
+    return [];
   }
 
   //----------------------------------------------
@@ -532,13 +534,18 @@ class AudioPlayerHandler extends BaseAudioHandler
   }
 
   Future _getTrackUrl(MediaItem mediaItem) async {
-    //Check if offline
-    String offlinePath =
-        p.join((await getExternalStorageDirectory())!.path, 'offline/');
+    //Check if offline — use platform-appropriate path
+    String offlinePath;
+    if (Platform.isAndroid) {
+      offlinePath = p.join((await getExternalStorageDirectory())!.path, 'offline/');
+    } else {
+      final dir = await getApplicationDocumentsDirectory();
+      offlinePath = p.join(dir.path, 'ReFreezer', 'offline');
+    }
+
     File f = File(p.join(offlinePath, mediaItem.id));
     if (await f.exists()) {
-      //return f.path;
-      //Stream server URL
+      //Stream server URL (same port, Dart server on desktop)
       return 'http://localhost:36958/?id=${mediaItem.id}';
     }
 

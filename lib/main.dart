@@ -1,18 +1,27 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:app_links/app_links.dart';
 import 'package:custom_navigator/custom_navigator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:get_it/get_it.dart';
 import 'package:i18n_extension/i18n_extension.dart';
 import 'package:logging/logging.dart';
-import 'package:move_to_background/move_to_background.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:quick_actions/quick_actions.dart';
 import 'package:refreezer/ui/restartable.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:window_manager/window_manager.dart';
+
+// Android-only imports — conditionally used via Platform guards
+// ignore: depend_on_referenced_packages
+import 'package:flutter_displaymode/flutter_displaymode.dart'
+    if (dart.library.html) 'package:refreezer/utils/stub_display_mode.dart';
+import 'package:move_to_background/move_to_background.dart'
+    if (dart.library.html) 'package:refreezer/utils/stub_move_to_background.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:quick_actions/quick_actions.dart'
+    if (dart.library.html) 'package:refreezer/utils/stub_quick_actions.dart';
 //import 'package:restart_app/restart_app.dart';
 
 import 'api/cache.dart';
@@ -38,11 +47,32 @@ late Function logOut;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Permission.notification.isDenied.then((value) {
-    if (value) {
-      Permission.notification.request();
-    }
-  });
+  // Desktop-specific initialization
+  if (!Platform.isAndroid && !Platform.isIOS) {
+    // Initialize sqflite with FFI for desktop platforms
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+
+    // Setup window
+    await windowManager.ensureInitialized();
+    const windowOptions = WindowOptions(
+      size: Size(1200, 780),
+      minimumSize: Size(800, 600),
+      title: 'ReFreezer',
+      center: true,
+    );
+    await windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.show();
+      await windowManager.focus();
+    });
+  }
+
+  // Request notification permission on Android only
+  if (Platform.isAndroid) {
+    await Permission.notification.isDenied.then((value) {
+      if (value) Permission.notification.request();
+    });
+  }
 
   await prepareRun();
 
@@ -121,7 +151,11 @@ class _ReFreezerAppState extends State<ReFreezerApp> {
           }
 
           // When on a root screen of the custom navigator, move app to background with back button
-          await MoveToBackground.moveTaskToBack();
+          if (Platform.isAndroid) {
+            await MoveToBackground.moveTaskToBack();
+          } else {
+            await windowManager.minimize();
+          }
           return;
         },
         child: I18n(
@@ -167,7 +201,9 @@ class _LoginMainWrapperState extends State<LoginMainWrapper> {
           'Error stopping and clearing audio service before logout', e, st);
     }
     await downloadManager.stop();
-    await DownloadManager.platform.invokeMethod('kill');
+    if (Platform.isAndroid) {
+      await DownloadManager.platform.invokeMethod('kill');
+    }
     setState(() {
       settings.arl = null;
       settings.offlineMode = false;
@@ -219,8 +255,8 @@ class _MainScreenState extends State<MainScreen>
   }
 
   Future<void> _init() async {
-    //Set display mode
-    if ((settings.displayMode ?? -1) >= 0) {
+    // Set display mode — Android only
+    if (Platform.isAndroid && (settings.displayMode ?? -1) >= 0) {
       FlutterDisplayMode.supported.then((modes) async {
         if (modes.length - 1 >= settings.displayMode!.toInt()) {
           FlutterDisplayMode.setPreferredMode(
@@ -266,8 +302,13 @@ class _MainScreenState extends State<MainScreen>
   }
 
   void _startStreamingServer() async {
-    await DownloadManager.platform
-        .invokeMethod('startServer', {'arl': settings.arl});
+    if (Platform.isAndroid) {
+      await DownloadManager.platform
+          .invokeMethod('startServer', {'arl': settings.arl});
+    } else {
+      // Desktop: use the Dart StreamServer
+      await downloadManager.startDesktopServer();
+    }
   }
 
   Future<void> _setupServiceLocator() async {
@@ -277,12 +318,14 @@ class _MainScreenState extends State<MainScreen>
   }
 
   void _prepareQuickActions() {
+    // Quick actions are Android/iOS only
+    if (!Platform.isAndroid) return;
+
     const QuickActions quickActions = QuickActions();
     quickActions.initialize((type) {
       _startPreload(type);
     });
 
-    //Actions
     quickActions.setShortcutItems([
       ShortcutItem(
           type: 'favorites',
@@ -307,6 +350,7 @@ class _MainScreenState extends State<MainScreen>
   }
 
   void _loadPreloadInfo() async {
+    if (!Platform.isAndroid) return;
     String info =
         await DownloadManager.platform.invokeMethod('getPreloadInfo') ?? '';
     if (info.isEmpty) return;

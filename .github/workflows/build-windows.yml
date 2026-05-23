@@ -1,0 +1,69 @@
+name: Build ReFreezer for Windows
+
+on:
+  push:
+    branches: [ main, master, windows-port ]
+  workflow_dispatch:  # También permite lanzarlo manualmente desde GitHub
+
+jobs:
+  build-windows:
+    name: 🪟 Build Windows EXE
+    runs-on: windows-latest   # ← Servidor Windows en la nube de GitHub
+
+    steps:
+      # 1. Descargar el código (con todos los submódulos)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # 2. Instalar Flutter en el servidor Windows de GitHub
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+          cache: true
+
+      # 3. Habilitar soporte de Windows en Flutter
+      - name: Enable Flutter Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      # 4. Crear el archivo .env con los API keys guardados en GitHub Secrets
+      - name: Create .env file
+        shell: bash
+        run: |
+          mkdir -p lib
+          cat > lib/.env << 'EOF'
+          deezerClientId=${{ secrets.DEEZER_CLIENT_ID }}
+          deezerClientSecret=${{ secrets.DEEZER_CLIENT_SECRET }}
+          lastFmApiKey=${{ secrets.LASTFM_API_KEY }}
+          lastFmApiSecret=${{ secrets.LASTFM_API_SECRET }}
+          EOF
+
+      # 5. Descargar dependencias de Dart/Flutter
+      - name: Get dependencies
+        run: flutter pub get
+
+      # 6. Generar código automático (env.g.dart, definitions.g.dart, etc.)
+      - name: Run build_runner
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      # 7. Compilar para Windows en modo Release
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      # 8. Comprimir el resultado en un ZIP
+      - name: Package output as ZIP
+        shell: powershell
+        run: |
+          $buildDir = "build\windows\x64\runner\Release"
+          Compress-Archive -Path "$buildDir\*" -DestinationPath "ReFreezer-Windows-x64.zip"
+
+      # 9. Subir el ZIP como artefacto descargable
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReFreezer-Windows-x64
+          path: ReFreezer-Windows-x64.zip
+          retention-days: 30   # El archivo estará disponible por 30 días

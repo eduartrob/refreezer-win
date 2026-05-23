@@ -14,15 +14,17 @@ import 'package:sqflite/sqflite.dart';
 
 import '../api/deezer.dart';
 import '../api/definitions.dart';
-import '../utils/navigator_keys.dart';
+import '../api/download_engine_dart.dart';
+import '../service/stream_server_dart.dart';
 import '../settings.dart';
 import '../translations.i18n.dart';
 import '../utils/file_utils.dart';
+import '../utils/navigator_keys.dart';
 
 DownloadManager downloadManager = DownloadManager();
 
 class DownloadManager {
-  //Platform channels
+  //Platform channels (Android only)
   static const MethodChannel platform = MethodChannel('r.r.refreezer/native');
   static const EventChannel eventChannel =
       EventChannel('r.r.refreezer/downloads');
@@ -34,16 +36,38 @@ class DownloadManager {
   String? offlinePath;
   Database? db;
 
+  // Desktop: Dart-native implementations
+  final StreamServerDart _streamServer = StreamServerDart();
+  bool _desktopServerStarted = false;
+
+  /// Starts the Dart StreamServer on desktop platforms
+  Future<void> startDesktopServer() async {
+    if (_desktopServerStarted) return;
+    offlinePath ??= await _getOfflinePath();
+    _streamServer.setOfflinePath(offlinePath!);
+    await _streamServer.start();
+    _desktopServerStarted = true;
+  }
+
   //Start/Resume downloads
   Future start() async {
-    //Returns whether service is bound or not, the delay is really shitty/hacky way, until i find a real solution
-    await updateServiceSettings();
-    await platform.invokeMethod('start');
+    if (Platform.isAndroid) {
+      await updateServiceSettings();
+      await platform.invokeMethod('start');
+    } else {
+      downloadEngineDart.updateSettings(
+          arl: settings.arl, licenseToken: deezerAPI.licenseToken);
+      await downloadEngineDart.start();
+    }
   }
 
   //Stop/Pause downloads
   Future stop() async {
-    await platform.invokeMethod('stop');
+    if (Platform.isAndroid) {
+      await platform.invokeMethod('stop');
+    } else {
+      await downloadEngineDart.stop();
+    }
   }
 
   Future init() async {
@@ -58,7 +82,6 @@ class DownloadManager {
     db = await openDatabase(dbPath, version: 1,
         onCreate: (Database db, int version) async {
       Batch b = db.batch();
-      //Create tables, if doesn't exit
       b.execute('''CREATE TABLE Tracks (
         id TEXT PRIMARY KEY, title TEXT, album TEXT, artists TEXT, duration INTEGER, albumArt TEXT, trackNumber INTEGER, offline INTEGER, lyrics TEXT, favorite INTEGER, diskNumber INTEGER, explicit INTEGER, fallback INTEGER)''');
       b.execute('''CREATE TABLE Albums (
@@ -71,33 +94,62 @@ class DownloadManager {
     });
 
     //Create offline directory
-    var directory = await getExternalStorageDirectory();
-    if (directory != null) {
-      offlinePath = p.join(directory.path, 'offline/');
-      await Directory(offlinePath!).create(recursive: true);
-    }
+    offlinePath = await _getOfflinePath();
+    await Directory(offlinePath!).create(recursive: true);
 
     //Update settings
     await updateServiceSettings();
 
-    //Listen to state change event
-    eventChannel.receiveBroadcastStream().listen((e) {
-      if (e['action'] == 'onStateChange') {
-        running = e['running'];
-        queueSize = e['queueSize'];
-      }
+    if (Platform.isAndroid) {
+      //Listen to state change event
+      eventChannel.receiveBroadcastStream().listen((e) {
+        if (e['action'] == 'onStateChange') {
+          running = e['running'];
+          queueSize = e['queueSize'];
+        }
+        //Forward
+        serviceEvents.add(e);
+      });
+      await platform.invokeMethod('loadDownloads');
+    } else {
+      // Desktop: initialize the Dart engine
+      await downloadEngineDart.init(
+        db: db!,
+        offlinePath: offlinePath!,
+        arl: settings.arl,
+      );
+      await downloadEngineDart.loadFromDb();
+      // Forward engine state events to UI
+      downloadEngineDart.stateStream.listen((e) {
+        if (e['action'] == 'onStateChange') {
+          running = e['running'] ?? false;
+          queueSize = e['queueSize'] ?? 0;
+        }
+        serviceEvents.add(e);
+      });
+    }
+  }
 
-      //Forward
-      serviceEvents.add(e);
-    });
-
-    await platform.invokeMethod('loadDownloads');
+  /// Returns the correct offline directory based on platform
+  Future<String> _getOfflinePath() async {
+    if (Platform.isAndroid) {
+      var directory = await getExternalStorageDirectory();
+      return p.join(directory?.path ?? '', 'offline/');
+    } else {
+      final dir = await getApplicationDocumentsDirectory();
+      return p.join(dir.path, 'ReFreezer', 'offline');
+    }
   }
 
   //Get all downloads from db
   Future<List<Download>> getDownloads() async {
-    List raw = await platform.invokeMethod('getDownloads');
-    return raw.map((d) => Download.fromJson(d)).toList();
+    if (Platform.isAndroid) {
+      List raw = await platform.invokeMethod('getDownloads');
+      return raw.map((d) => Download.fromJson(d)).toList();
+    } else {
+      final dartDownloads = await downloadEngineDart.getDownloads();
+      return dartDownloads.map((d) => Download.fromJson(d)).toList();
+    }
   }
 
   //Insert track and metadata to DB
@@ -261,10 +313,17 @@ class DownloadManager {
 
     //Get path
     String path = _generatePath(track, private, isSingleton: isSingleton);
-    await platform.invokeMethod('addDownloads', [
-      await Download.jsonFromTrack(track, path,
-          private: private, quality: quality)
-    ]);
+    if (Platform.isAndroid) {
+      await platform.invokeMethod('addDownloads', [
+        await Download.jsonFromTrack(track, path,
+            private: private, quality: quality)
+      ]);
+    } else {
+      await downloadEngineDart.addDownloads([
+        await Download.jsonFromTrack(track, path,
+            private: private, quality: quality)
+      ]);
+    }
     await start();
     return true;
   }
@@ -306,7 +365,11 @@ class DownloadManager {
       out.add(await Download.jsonFromTrack(t, _generatePath(t, private),
           private: private, quality: quality));
     }
-    await platform.invokeMethod('addDownloads', out);
+    if (Platform.isAndroid) {
+      await platform.invokeMethod('addDownloads', out);
+    } else {
+      await downloadEngineDart.addDownloads(out);
+    }
     await start();
   }
 
@@ -358,7 +421,11 @@ class DownloadManager {
           private: private,
           quality: quality));
     }
-    await platform.invokeMethod('addDownloads', out);
+    if (Platform.isAndroid) {
+      await platform.invokeMethod('addDownloads', out);
+    } else {
+      await downloadEngineDart.addDownloads(out);
+    }
     await start();
   }
 
@@ -681,8 +748,13 @@ class DownloadManager {
 
   //Send settings to download service
   Future updateServiceSettings() async {
-    await platform.invokeMethod(
-        'updateSettings', settings.getServiceSettings());
+    if (Platform.isAndroid) {
+      await platform.invokeMethod(
+          'updateSettings', settings.getServiceSettings());
+    } else {
+      downloadEngineDart.updateSettings(
+          arl: settings.arl, licenseToken: deezerAPI.licenseToken);
+    }
   }
 
   //Check storage permission
@@ -704,20 +776,41 @@ class DownloadManager {
 
   //Remove download from queue/finished
   Future removeDownload(int id) async {
-    await platform.invokeMethod('removeDownload', {'id': id});
+    if (Platform.isAndroid) {
+      await platform.invokeMethod('removeDownload', {'id': id});
+    } else {
+      await downloadEngineDart.removeDownload(id);
+    }
   }
 
   //Restart failed downloads
   Future retryDownloads() async {
     //Permission
     if (!(await checkPermission())) return;
-    await platform.invokeMethod('retryDownloads');
+    if (Platform.isAndroid) {
+      await platform.invokeMethod('retryDownloads');
+    } else {
+      await downloadEngineDart.retryFailed();
+    }
   }
 
   //Delete downloads by state
   Future removeDownloads(DownloadState state) async {
-    await platform.invokeMethod(
-        'removeDownloads', {'state': DownloadState.values.indexOf(state)});
+    if (Platform.isAndroid) {
+      await platform.invokeMethod(
+          'removeDownloads', {'state': DownloadState.values.indexOf(state)});
+    } else {
+      final stateMap = {
+        DownloadState.NONE: DownloadStateDart.none,
+        DownloadState.DOWNLOADING: DownloadStateDart.downloading,
+        DownloadState.POST: DownloadStateDart.post,
+        DownloadState.DONE: DownloadStateDart.done,
+        DownloadState.DEEZER_ERROR: DownloadStateDart.deezerError,
+        DownloadState.ERROR: DownloadStateDart.error,
+      };
+      await downloadEngineDart.removeByState(
+          stateMap[state] ?? DownloadStateDart.none);
+    }
   }
 }
 
