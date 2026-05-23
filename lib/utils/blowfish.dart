@@ -1124,6 +1124,29 @@ class Blowfish {
     lr[1] = right;
   }
 
+  void _decryptBlock(Uint32List lr) {
+    int left = lr[0];
+    int right = lr[1];
+
+    for (int i = 17; i > 1; i--) {
+      left ^= pArray[i];
+      right ^= _f(left);
+      int temp = left;
+      left = right;
+      right = temp;
+    }
+
+    int swap = left;
+    left = right;
+    right = swap;
+
+    right ^= pArray[1];
+    left ^= pArray[0];
+
+    lr[0] = left;
+    lr[1] = right;
+  }
+
   int _f(int x) {
     return ((sBoxes[0][(x >> 24) & 0xff] + sBoxes[1][(x >> 16) & 0xff]) ^ sBoxes[2][(x >> 8) & 0xff]) +
         sBoxes[3][x & 0xff];

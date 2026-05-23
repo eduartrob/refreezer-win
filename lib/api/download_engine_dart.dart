@@ -25,7 +25,7 @@ class DownloadItemDart {
   final String mediaVersion;
   final String path;
   final bool private;
-  final int quality;
+  int quality;
   final String title;
   final String? imageUrl;
 
