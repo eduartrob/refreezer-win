@@ -61,7 +61,7 @@ void main() async {
       title: 'ReFreezer',
       center: true,
     );
-    await windowManager.waitUntilReadyToShow(windowOptions, () async {
+    windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.show();
       await windowManager.focus();
     });
