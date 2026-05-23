@@ -579,9 +579,22 @@ class AudioPlayerHandler extends BaseAudioHandler
     }
 
     if ((streamPlaybackDetails ?? []).length < 3) return null;
-    String url =
-        'http://127.0.0.1:36958/?q=$quality&id=${mediaItem.id}&streamTrackId=$streamItemId&trackToken=${streamPlaybackDetails?[2]}&mv=${streamPlaybackDetails?[1]}&md5origin=${streamPlaybackDetails?[0]}';
-    return url;
+    
+    final uri = Uri(
+      scheme: 'http',
+      host: '127.0.0.1',
+      port: 36958,
+      queryParameters: {
+        'q': quality.toString(),
+        'id': mediaItem.id,
+        'streamTrackId': streamItemId,
+        'trackToken': streamPlaybackDetails?[2] ?? '',
+        'mv': streamPlaybackDetails?[1] ?? '',
+        'md5origin': streamPlaybackDetails?[0] ?? '',
+      },
+    );
+    
+    return uri.toString();
   }
 
   /// Get requested stream quality based on connection and settings.

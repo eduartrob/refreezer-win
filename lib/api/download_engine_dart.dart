@@ -154,16 +154,13 @@ class DownloadEngineDart {
   }
 
   Future<List<Map<String, dynamic>>> getDownloads() async {
-    return _queue.map((d) => {
-      'id': d.id,
-      'trackId': d.trackId,
-      'path': d.path,
-      'image': d.imageUrl,
-      'private': d.private,
-      'title': d.title,
-      'quality': d.quality,
-      'state': d.state.index,
-    }).toList();
+    if (_db == null) return [];
+    
+    // Read all downloads directly from DB ordered by ID descending (like Android Java implementation)
+    final rows = await _db!.query('Downloads', orderBy: 'id DESC');
+    
+    // Map the SQFlite rows to mutable maps because SQFlite rows are read-only
+    return rows.map((row) => Map<String, dynamic>.from(row)).toList();
   }
 
   Future<void> start() async {
