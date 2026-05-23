@@ -580,7 +580,7 @@ class _SpotifyImporterV2MainState extends State<SpotifyImporterV2Main> {
             builder: (context) => const ImporterStatusScreen()));
       }
     } catch (e) {
-      showToast(e.toString();
+      showToast(e.toString());
       if (mounted) Navigator.of(context).pop();
       return;
     }
