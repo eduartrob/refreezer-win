@@ -1309,7 +1309,7 @@ class _GeneralSettingsState extends State<GeneralSettings> {
             leading: const Icon(Icons.lock),
             onTap: () async {
               await FlutterClipboard.copy(settings.arl ?? '');
-              await showToast('Copied');
+              showToast('Copied');
             },
           ),
           if (Platform.isAndroid)

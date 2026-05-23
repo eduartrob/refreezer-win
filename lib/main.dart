@@ -70,9 +70,6 @@ void main() {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
 
-      // Initialize WebView2 environment for Windows
-      await InAppWebViewController.initializePlatform();
-
       // Setup window
       await windowManager.ensureInitialized();
       const windowOptions = WindowOptions(
