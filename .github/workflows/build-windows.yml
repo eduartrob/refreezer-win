@@ -8,7 +8,7 @@ on:
 jobs:
   build-windows:
     name: 🪟 Build Windows EXE
-    runs-on: windows-latest   # ← Servidor Windows en la nube de GitHub
+    runs-on: windows-2022   # ← VS 2022 con C++ tools garantizado
 
     steps:
       # 1. Descargar el código (con todos los submódulos)
@@ -17,7 +17,11 @@ jobs:
         with:
           submodules: recursive
 
-      # 2. Instalar Flutter en el servidor Windows de GitHub
+      # 2. Configurar MSBuild / Visual Studio C++ toolchain
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      # 3. Instalar Flutter en el servidor Windows de GitHub
       - name: Install Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -25,7 +29,7 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # 3. Habilitar soporte de Windows en Flutter
+      # 4. Habilitar soporte de Windows en Flutter
       - name: Enable Flutter Windows desktop
         run: flutter config --enable-windows-desktop
 
