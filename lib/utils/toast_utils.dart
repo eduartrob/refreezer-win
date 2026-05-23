@@ -26,7 +26,8 @@ void showToast(String message, {BuildContext? context}) {
 
   ScaffoldMessenger.of(ctx).showSnackBar(
     SnackBar(
-      content: Text(message),
+      content: Text(message, style: const TextStyle(color: Colors.white)),
+      backgroundColor: Colors.grey[850],
       duration: const Duration(seconds: 2),
       behavior: SnackBarBehavior.floating,
       margin: const EdgeInsets.only(bottom: 16, left: 16, right: 16),

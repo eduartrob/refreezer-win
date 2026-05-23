@@ -422,6 +422,7 @@ class DownloadEngineDart {
           if (media != null && media.isNotEmpty) {
             final sources = media[0]['sources'] as List?;
             if (sources != null && sources.isNotEmpty) {
+              item.quality = quality; // Update to actual resolved quality
               return sources[0]['url'] as String;
             }
           }
@@ -452,8 +453,18 @@ class DownloadEngineDart {
   }
 
   void _emitProgress(DownloadItemDart item) {
-    _progressController.add(DownloadProgressDart(
-        item.id, item.state, item.received, item.filesize, item.quality));
+    _stateController.add({
+      'action': 'onProgress',
+      'data': [
+        {
+          'id': item.id,
+          'state': item.state.index,
+          'received': item.received,
+          'filesize': item.filesize,
+          'quality': item.quality,
+        }
+      ]
+    });
   }
 
   void _emitState() {

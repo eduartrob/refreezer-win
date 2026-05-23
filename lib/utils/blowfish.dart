@@ -1153,16 +1153,22 @@ class Blowfish {
     for (int i = 0; i < data.length; i += BLOCK_SIZE) {
       block.setRange(0, BLOCK_SIZE, data, i);
 
-      lr[0] = ByteData.view(block.buffer).getUint32(0, Endian.big) ^ prevLeft;
-      lr[1] = ByteData.view(block.buffer).getUint32(4, Endian.big) ^ prevRight;
+      int currLeft = ByteData.view(block.buffer).getUint32(0, Endian.big);
+      int currRight = ByteData.view(block.buffer).getUint32(4, Endian.big);
 
-      _encryptBlock(lr);
+      lr[0] = currLeft;
+      lr[1] = currRight;
+
+      _decryptBlock(lr);
+
+      lr[0] ^= prevLeft;
+      lr[1] ^= prevRight;
 
       result.setRange(i, i + 4, lr.buffer.asUint8List(0, 4));
       result.setRange(i + 4, i + 8, lr.buffer.asUint8List(4, 4));
 
-      prevLeft = ByteData.view(block.buffer).getUint32(0, Endian.big);
-      prevRight = ByteData.view(block.buffer).getUint32(4, Endian.big);
+      prevLeft = currLeft;
+      prevRight = currRight;
     }
 
     return result;
