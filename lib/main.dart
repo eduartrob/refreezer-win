@@ -43,47 +43,73 @@ import 'utils/navigator_keys.dart';
 late Function updateTheme;
 late Function logOut;
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+void main() {
+  // Wrap everything in a Zone to catch 100% of Dart async errors,
+  // even ones that happen before Flutter is fully initialized.
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-  // Desktop-specific initialization
-  if (!Platform.isAndroid && !Platform.isIOS) {
-    // Initialize sqflite with FFI for desktop platforms
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
+    // Initialize logging as early as possible so all subsequent
+    // errors are captured to the log file.
+    try {
+      await initializeLogging();
+    } catch (e, st) {
+      // If even logging fails, write a plain file next to the exe as last resort
+      try {
+        final exeDir = File(Platform.resolvedExecutable).parent.path;
+        final f = File('$exeDir/refreezer_emergency.log');
+        f.writeAsStringSync(
+            '[${DateTime.now()}] LOGGING INIT FAILED: $e\n$st\n');
+      } catch (_) {}
+    }
 
-    // Setup window
-    await windowManager.ensureInitialized();
-    const windowOptions = WindowOptions(
-      size: Size(1200, 780),
-      minimumSize: Size(800, 600),
-      title: 'ReFreezer',
-      center: true,
-    );
-    windowManager.waitUntilReadyToShow(windowOptions, () async {
-      await windowManager.show();
-      await windowManager.focus();
-    });
-  }
+    // Desktop-specific initialization
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      // Initialize sqflite with FFI for desktop platforms
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
 
-  // Request notification permission on Android only
-  if (Platform.isAndroid) {
-    await Permission.notification.isDenied.then((value) {
-      if (value) Permission.notification.request();
-    });
-  }
+      // Setup window
+      await windowManager.ensureInitialized();
+      const windowOptions = WindowOptions(
+        size: Size(1200, 780),
+        minimumSize: Size(800, 600),
+        title: 'ReFreezer',
+        center: true,
+      );
+      windowManager.waitUntilReadyToShow(windowOptions, () async {
+        await windowManager.show();
+        await windowManager.focus();
+      });
+    }
 
-  await prepareRun();
+    // Request notification permission on Android only
+    if (Platform.isAndroid) {
+      await Permission.notification.isDenied.then((value) {
+        if (value) Permission.notification.request();
+      });
+    }
 
-  runApp(const Restartable(child: ReFreezerApp()));
+    try {
+      await prepareRun();
+    } catch (e, st) {
+      emergencyLog('prepareRun() FAILED: $e\n$st');
+      rethrow;
+    }
+
+    runApp(const Restartable(child: ReFreezerApp()));
+  }, (error, stack) {
+    // This catches any error that escaped all other handlers
+    emergencyLog('ZONE_UNCAUGHT: $error\nStack: $stack');
+  });
 }
 
 Future<void> prepareRun() async {
-  await initializeLogging();
   Logger.root.info('Starting ReFreezer App...');
   settings = await Settings().loadSettings();
   cache = await Cache.load();
 }
+
 
 class ReFreezerApp extends StatefulWidget {
   const ReFreezerApp({super.key});
