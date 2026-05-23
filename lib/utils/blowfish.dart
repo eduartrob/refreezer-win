@@ -1087,21 +1087,21 @@ class Blowfish {
 
     Uint32List lr = Uint32List(2);
     for (int i = 0; i < 18; i += 2) {
-      _encryptBlock(lr);
+      encryptBlock(lr);
       pArray[i] = lr[0];
       pArray[i + 1] = lr[1];
     }
 
     for (int i = 0; i < 4; i++) {
       for (int j = 0; j < 256; j += 2) {
-        _encryptBlock(lr);
+        encryptBlock(lr);
         sBoxes[i][j] = lr[0];
         sBoxes[i][j + 1] = lr[1];
       }
     }
   }
 
-  void _encryptBlock(Uint32List lr) {
+  void encryptBlock(Uint32List lr) {
     int left = lr[0];
     int right = lr[1];
 
@@ -1124,7 +1124,7 @@ class Blowfish {
     lr[1] = right;
   }
 
-  void _decryptBlock(Uint32List lr) {
+  void decryptBlock(Uint32List lr) {
     int left = lr[0];
     int right = lr[1];
 
@@ -1182,13 +1182,13 @@ class Blowfish {
       lr[0] = currLeft;
       lr[1] = currRight;
 
-      _decryptBlock(lr);
+      decryptBlock(lr);
 
       lr[0] ^= prevLeft;
       lr[1] ^= prevRight;
 
-      result.setRange(i, i + 4, lr.buffer.asUint8List(0, 4));
-      result.setRange(i + 4, i + 8, lr.buffer.asUint8List(4, 4));
+      ByteData.view(result.buffer).setUint32(i, lr[0], Endian.big);
+      ByteData.view(result.buffer).setUint32(i + 4, lr[1], Endian.big);
 
       prevLeft = currLeft;
       prevRight = currRight;
