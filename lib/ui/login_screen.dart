@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:logging/logging.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api/deezer.dart';
 import '../api/deezer_login.dart';
@@ -25,10 +28,13 @@ class _LoginWidgetState extends State<LoginWidget> {
   String? _arl;
   String? _error;
 
+  // True when running on Windows/Linux/macOS — InAppWebView not supported
+  bool get _isDesktop =>
+      !Platform.isAndroid && !Platform.isIOS;
+
   //Initialize deezer etc
   Future _init() async {
     deezerAPI.arl = settings.arl;
-    //await GetIt.I<AudioPlayerHandler>().start();
 
     //Pre-cache homepage
     if (!await HomePage().exists()) {
@@ -70,13 +76,6 @@ class _LoginWidgetState extends State<LoginWidget> {
               ));
     }
   }
-
-  /* No idea why this is needed, seems to trigger superfluous _start() execution...
-  @override
-  void didUpdateWidget(LoginWidget oldWidget) {
-    _start();
-    super.didUpdateWidget(oldWidget);
-  }*/
 
   @override
   void initState() {
@@ -153,9 +152,38 @@ class _LoginWidgetState extends State<LoginWidget> {
     _update();
   }
 
+  /// Builds a button that is grayed out and non-interactive on desktop.
+  /// Shows a tooltip explaining why it's unavailable.
+  Widget _disabledOnDesktop({
+    required String label,
+    required String reason,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32.0),
+      child: Tooltip(
+        message: reason,
+        child: OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.grey,
+            side: const BorderSide(color: Colors.grey),
+          ),
+          onPressed: null, // disabled
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(label),
+              const SizedBox(width: 6),
+              const Icon(Icons.block, size: 16, color: Colors.grey),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    //If arl is null, show loading
+    //If arl is set, show loading
     if (settings.arl != null) {
       return const Scaffold(
         body: Center(
@@ -174,37 +202,74 @@ class _LoginWidgetState extends State<LoginWidget> {
           }
           return KeyEventResult.handled;
         });
-    if (settings.arl == null) {
-      return Scaffold(
-        body: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: ListView(
-            children: <Widget>[
-              const FreezerTitle(),
-              Container(
-                height: 8.0,
-              ),
-              Text(
-                'Please login using your Deezer account.'.i18n,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 16.0),
-              ),
-              Container(
-                height: 16.0,
-              ),
-              //Email login dialog
+
+    return Scaffold(
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+        child: ListView(
+          children: <Widget>[
+            const FreezerTitle(),
+            const SizedBox(height: 8.0),
+            Text(
+              'Please login using your Deezer account.'.i18n,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16.0),
+            ),
+            const SizedBox(height: 16.0),
+
+            // ── Desktop notice ────────────────────────────────────────
+            if (_isDesktop)
               Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                  child: OutlinedButton(
-                    child: Text(
-                      'Login using email'.i18n,
-                    ),
-                    onPressed: () {
-                      showDialog(
-                          context: context,
-                          builder: (context) => EmailLogin(_update));
-                    },
-                  )),
+                padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 8.0),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.15),
+                    border: Border.all(color: Colors.amber.shade700),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.amber.shade700),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'On Windows, use "Login using token (ARL)" below. '
+                          'Open deezer.com in your browser, log in, and copy your ARL cookie.',
+                          style: TextStyle(color: Colors.amber.shade200, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // ── Email login (disabled on desktop) ────────────────────
+            if (_isDesktop)
+              _disabledOnDesktop(
+                label: 'Login using email'.i18n,
+                reason: 'Not available on Windows — use token login below',
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                child: OutlinedButton(
+                  child: Text('Login using email'.i18n),
+                  onPressed: () {
+                    showDialog(
+                        context: context,
+                        builder: (context) => EmailLogin(_update));
+                  },
+                ),
+              ),
+
+            // ── Browser login (disabled on desktop) ──────────────────
+            if (_isDesktop)
+              _disabledOnDesktop(
+                label: 'Login using browser'.i18n,
+                reason: 'Built-in browser not available on Windows — use token login below',
+              )
+            else
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32.0),
                 child: OutlinedButton(
@@ -215,81 +280,117 @@ class _LoginWidgetState extends State<LoginWidget> {
                   },
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                child: OutlinedButton(
-                  child: Text('Login using token'.i18n),
-                  onPressed: () {
-                    showDialog(
-                        context: context,
-                        builder: (context) {
-                          Future.delayed(
-                              const Duration(seconds: 1),
-                              () => {
-                                    focusNode.requestFocus()
-                                  }); // autofocus doesn't work - it's replacement
-                          return AlertDialog(
-                            title: Text('Enter ARL'.i18n),
-                            content: TextField(
-                              onChanged: (String s) => _arl = s,
-                              decoration: InputDecoration(
-                                  labelText: 'Token (ARL)'.i18n),
-                              focusNode: focusNode,
-                              controller: controller,
-                              onSubmitted: (String s) {
-                                goARL(focusNode, controller);
-                              },
-                            ),
-                            actions: <Widget>[
-                              TextButton(
-                                child: Text('Save'.i18n),
-                                onPressed: () => goARL(null, controller),
-                              )
-                            ],
-                          );
-                        });
-                  },
-                ),
-              ),
-              Container(
-                height: 16.0,
-              ),
-              Text(
-                "If you don't have account, you can register on deezer.com for free."
-                    .i18n,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 16.0),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                child: OutlinedButton(
-                  child: Text('Open in browser'.i18n),
-                  onPressed: () {
+
+            // ── Token / ARL login (always available, highlighted on desktop) ──
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32.0),
+              child: _isDesktop
+                  ? ElevatedButton.icon(
+                      icon: const Icon(Icons.vpn_key),
+                      label: Text('Login using token (ARL)'.i18n),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: () => _showArlDialog(context, focusNode, controller),
+                    )
+                  : OutlinedButton(
+                      child: Text('Login using token'.i18n),
+                      onPressed: () => _showArlDialog(context, focusNode, controller),
+                    ),
+            ),
+
+            const SizedBox(height: 16.0),
+            const Divider(),
+            const SizedBox(height: 8.0),
+
+            Text(
+              "If you don't have account, you can register on deezer.com for free."
+                  .i18n,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16.0),
+            ),
+
+            // ── Open deezer.com in system browser ────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32.0),
+              child: OutlinedButton(
+                child: Text(_isDesktop
+                    ? 'Open deezer.com (to get ARL)'.i18n
+                    : 'Open in browser'.i18n),
+                onPressed: () {
+                  if (_isDesktop) {
+                    launchUrl(Uri.parse('https://deezer.com/login'),
+                        mode: LaunchMode.externalApplication);
+                  } else {
                     InAppBrowser.openWithSystemBrowser(
                         url: WebUri('https://deezer.com/register'));
-                  },
+                  }
+                },
+              ),
+            ),
+
+            // ── Desktop ARL instructions ──────────────────────────────
+            if (_isDesktop)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(32, 12, 32, 8),
+                child: Text(
+                  'How to get your ARL:\n'
+                  '1. Open deezer.com above and log in\n'
+                  '2. Press F12 → Application → Cookies → deezer.com\n'
+                  '3. Find the cookie named "arl" and copy its value\n'
+                  '4. Paste it in "Login using token (ARL)" above',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade400,
+                    height: 1.6,
+                  ),
                 ),
               ),
-              Container(
-                height: 8.0,
-              ),
-              const Divider(),
-              Container(
-                height: 8.0,
-              ),
-              Text(
-                "By using this app, you don't agree with the Deezer ToS".i18n,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 16.0),
+
+            const SizedBox(height: 8.0),
+            const Divider(),
+            const SizedBox(height: 8.0),
+            Text(
+              "By using this app, you don't agree with the Deezer ToS".i18n,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16.0),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showArlDialog(BuildContext context, FocusNode focusNode,
+      TextEditingController controller) {
+    showDialog(
+        context: context,
+        builder: (context) {
+          Future.delayed(const Duration(seconds: 1),
+              () => {focusNode.requestFocus()});
+          return AlertDialog(
+            title: Text('Enter ARL'.i18n),
+            content: TextField(
+              onChanged: (String s) => _arl = s,
+              decoration:
+                  InputDecoration(labelText: 'Token (ARL)'.i18n),
+              focusNode: focusNode,
+              controller: controller,
+              onSubmitted: (String s) {
+                goARL(focusNode, controller);
+              },
+            ),
+            actions: <Widget>[
+              TextButton(
+                child: Text('Save'.i18n),
+                onPressed: () => goARL(null, controller),
               )
             ],
-          ),
-        ),
-      );
-    }
-    return Container();
+          );
+        });
   }
 }
+
 
 class LoginBrowser extends StatelessWidget {
   final Function updateParent;
