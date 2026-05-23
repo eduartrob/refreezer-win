@@ -11,6 +11,7 @@ import 'package:i18n_extension/i18n_extension.dart';
 import 'package:logging/logging.dart';
 import 'package:refreezer/ui/restartable.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:window_manager/window_manager.dart';
 
 // Android-only imports — conditionally used via Platform guards
@@ -68,6 +69,9 @@ void main() {
       // Initialize sqflite with FFI for desktop platforms
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
+
+      // Initialize WebView2 environment for Windows
+      await InAppWebViewController.initializePlatform();
 
       // Setup window
       await windowManager.ensureInitialized();

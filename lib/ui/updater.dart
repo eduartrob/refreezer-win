@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../utils/toast_utils.dart';
 import 'dart:io';
 
 import 'package:collection/collection.dart';
@@ -38,6 +39,7 @@ class _UpdaterScreenState extends State<UpdaterScreen> {
   bool _buttonEnabled = true;
 
   Future<bool> _hasInstallPackagesPermission() async {
+    if (!Platform.isAndroid) return true; // Not needed on desktop
     if (await Permission.requestInstallPackages.isDenied) {
       final status = await Permission.requestInstallPackages.request();
       if (status.isGranted) {
@@ -61,7 +63,15 @@ class _UpdaterScreenState extends State<UpdaterScreen> {
     });
 
     //Get architecture
-    _arch = await DownloadManager.platform.invokeMethod('arch');
+    if (Platform.isAndroid) {
+      _arch = await DownloadManager.platform.invokeMethod('arch');
+    } else {
+      // Windows/Linux/macOS: detect from environment
+      final processor = Platform.environment['PROCESSOR_ARCHITECTURE'] ?? // Windows
+          Platform.environment['HOSTTYPE'] ?? // Linux
+          'x86_64';
+      _arch = processor.toLowerCase().contains('arm') ? 'arm64' : 'x86_64';
+    }
 
     //Load from website
     try {
@@ -86,10 +96,7 @@ class _UpdaterScreenState extends State<UpdaterScreen> {
 
   Future _download() async {
     if (!await _hasInstallPackagesPermission()) {
-      Fluttertoast.showToast(
-          msg: 'Permission denied, download canceled!'.i18n,
-          toastLength: Toast.LENGTH_LONG,
-          gravity: ToastGravity.BOTTOM);
+      showToast('Permission denied, download canceled!'.i18n);
       setState(() {
         _progress = 0.0;
         _buttonEnabled = true;
@@ -102,7 +109,15 @@ class _UpdaterScreenState extends State<UpdaterScreen> {
       if (url == null) {
         throw Exception('No compatible download available');
       }
-      //Start request
+
+      if (!Platform.isAndroid) {
+        // Desktop: open releases page in browser instead of downloading
+        await launchUrlString(
+            'https://github.com/eduartrob/refreezer-win/releases/latest');
+        return;
+      }
+
+      //Start request (Android only)
       http.Client client = http.Client();
       http.StreamedResponse res =
           await client.send(http.Request('GET', Uri.parse(url)));
@@ -129,10 +144,7 @@ class _UpdaterScreenState extends State<UpdaterScreen> {
       });
     } catch (e) {
       Logger.root.severe('Failed to download latest release file', e);
-      Fluttertoast.showToast(
-          msg: 'Download failed!'.i18n,
-          toastLength: Toast.LENGTH_LONG,
-          gravity: ToastGravity.BOTTOM);
+      showToast('Download failed!'.i18n);
       setState(() {
         _progress = 0.0;
         _buttonEnabled = true;
@@ -329,7 +341,15 @@ class ReFreezerLatest {
       if (latestVersion.version <= currentVersion) return;
 
       //Get architecture
-      String arch = await DownloadManager.platform.invokeMethod('arch');
+      String arch;
+      if (Platform.isAndroid) {
+        arch = await DownloadManager.platform.invokeMethod('arch');
+      } else {
+        final processor = Platform.environment['PROCESSOR_ARCHITECTURE'] ??
+            Platform.environment['HOSTTYPE'] ??
+            'x86_64';
+        arch = processor.toLowerCase().contains('arm') ? 'arm64' : 'x86_64';
+      }
       Logger.root
           .info('Checking for updates to version $currentVersion on $arch');
 
@@ -340,33 +360,37 @@ class ReFreezerLatest {
         return;
       }
 
-      //Show notification
-      FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-          FlutterLocalNotificationsPlugin();
-      const AndroidInitializationSettings androidInitializationSettings =
-          AndroidInitializationSettings('drawable/ic_logo');
-      const InitializationSettings initializationSettings =
-          InitializationSettings(
-              android: androidInitializationSettings, iOS: null);
-      await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+      // Show notification (Android only — flutter_local_notifications
+      // does not support Windows)
+      if (Platform.isAndroid) {
+        FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+            FlutterLocalNotificationsPlugin();
+        const AndroidInitializationSettings androidInitializationSettings =
+            AndroidInitializationSettings('drawable/ic_logo');
+        const InitializationSettings initializationSettings =
+            InitializationSettings(
+                android: androidInitializationSettings, iOS: null);
+        await flutterLocalNotificationsPlugin
+            .initialize(initializationSettings);
 
-      AndroidNotificationDetails androidNotificationDetails =
-          AndroidNotificationDetails(
-        'refreezerupdates',
-        'ReFreezer Updates'.i18n,
-        channelDescription: 'ReFreezer Updates'.i18n,
-        importance: Importance.high,
-        priority: Priority.high,
-      );
+        AndroidNotificationDetails androidNotificationDetails =
+            AndroidNotificationDetails(
+          'refreezerupdates',
+          'ReFreezer Updates'.i18n,
+          channelDescription: 'ReFreezer Updates'.i18n,
+          importance: Importance.high,
+          priority: Priority.high,
+        );
 
-      NotificationDetails notificationDetails =
-          NotificationDetails(android: androidNotificationDetails, iOS: null);
+        NotificationDetails notificationDetails =
+            NotificationDetails(android: androidNotificationDetails, iOS: null);
 
-      await flutterLocalNotificationsPlugin.show(
-          0,
-          'New update available!'.i18n,
-          'Update to latest version in the settings.'.i18n,
-          notificationDetails);
+        await flutterLocalNotificationsPlugin.show(
+            0,
+            'New update available!'.i18n,
+            'Update to latest version in the settings.'.i18n,
+            notificationDetails);
+      }
     } catch (e) {
       Logger.root.severe('Error checking for updates', e);
     }

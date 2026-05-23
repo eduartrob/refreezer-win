@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../utils/toast_utils.dart';
 import 'dart:convert';
 import 'dart:ui';
 
@@ -8,7 +9,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+
 import 'package:get_it/get_it.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:marquee/marquee.dart';
@@ -306,10 +307,7 @@ class _PlayerScreenHorizontalState extends State<PlayerScreenHorizontal> {
                             if (await downloadManager.addOfflineTrack(t,
                                     private: false, isSingleton: true) !=
                                 false) {
-                              Fluttertoast.showToast(
-                                  msg: 'Downloads added!'.i18n,
-                                  gravity: ToastGravity.BOTTOM,
-                                  toastLength: Toast.LENGTH_SHORT);
+                              showToast('Downloads added!');
                             }
                           },
                         ),
@@ -436,10 +434,7 @@ class _PlayerScreenVerticalState extends State<PlayerScreenVertical> {
                   if (await downloadManager.addOfflineTrack(t,
                           private: false, isSingleton: true) !=
                       false) {
-                    Fluttertoast.showToast(
-                        msg: 'Downloads added!'.i18n,
-                        gravity: ToastGravity.BOTTOM,
-                        toastLength: Toast.LENGTH_SHORT);
+                    showToast('Downloads added!');
                   }
                 },
               ),
@@ -469,6 +464,15 @@ class _QualityInfoWidgetState extends State<QualityInfoWidget> {
   //Load data from native
   void _load() async {
     if (audioHandler.mediaItem.value == null) return;
+
+    // getStreamInfo is Android-only (native MethodChannel)
+    if (!Platform.isAndroid) {
+      // On desktop, quality info is not available via native channel
+      // TODO: get this from stream_server_dart if needed
+      if (mounted) setState(() => value = '');
+      return;
+    }
+
     Map? data = await DownloadManager.platform.invokeMethod(
         'getStreamInfo', {'id': audioHandler.mediaItem.value!.id});
     //N/A

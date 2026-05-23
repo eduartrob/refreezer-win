@@ -1,9 +1,10 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
+import '../utils/toast_utils.dart';
 import 'package:draggable_scrollbar/draggable_scrollbar.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttericon/font_awesome5_icons.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+
 import 'package:get_it/get_it.dart';
 import 'package:logging/logging.dart';
 
@@ -1209,9 +1210,7 @@ class _LibraryPlaylistsState extends State<LibraryPlaylists> {
                     color: Color(0xff009a85)),
                 onTap: () async {
                   if (settings.offlineMode) {
-                    Fluttertoast.showToast(
-                        msg: 'Cannot create playlists in offline mode'.i18n,
-                        gravity: ToastGravity.BOTTOM);
+                    showToast('Cannot create playlists in offline mode');
                     return;
                   }
                   MenuSheet m = MenuSheet();

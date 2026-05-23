@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:io';
+import '../utils/toast_utils.dart';
 
 import 'package:clipboard/clipboard.dart';
 import 'package:country_currency_pickers/country.dart';
@@ -342,35 +344,36 @@ class _AppearanceSettingsState extends State<AppearanceSettings> {
             ),
           ),
           //Display mode
-          ListTile(
-            leading: const Icon(Icons.screen_lock_portrait),
-            title: Text('Change display mode'.i18n),
-            subtitle: Text('Enable high refresh rates'.i18n),
-            onTap: () async {
-              List modes = await FlutterDisplayMode.supported;
-              if (!context.mounted) return;
-              showDialog(
-                  context: context,
-                  builder: (context) {
-                    return SimpleDialog(
-                        title: Text('Display mode'.i18n),
-                        children: List.generate(
-                            modes.length,
-                            (i) => SimpleDialogOption(
-                                  child: Text(modes[i].toString()),
-                                  onPressed: () async {
-                                    settings.displayMode = i;
-                                    await settings.save();
-                                    await FlutterDisplayMode.setPreferredMode(
-                                        modes[i]);
-                                    if (context.mounted) {
-                                      Navigator.of(context).pop();
-                                    }
-                                  },
-                                )));
-                  });
-            },
-          )
+          if (Platform.isAndroid)
+            ListTile(
+              leading: const Icon(Icons.screen_lock_portrait),
+              title: Text('Change display mode'.i18n),
+              subtitle: Text('Enable high refresh rates'.i18n),
+              onTap: () async {
+                List modes = await FlutterDisplayMode.supported;
+                if (!context.mounted) return;
+                showDialog(
+                    context: context,
+                    builder: (context) {
+                      return SimpleDialog(
+                          title: Text('Display mode'.i18n),
+                          children: List.generate(
+                              modes.length,
+                              (i) => SimpleDialogOption(
+                                    child: Text(modes[i].toString()),
+                                    onPressed: () async {
+                                      settings.displayMode = i;
+                                      await settings.save();
+                                      await FlutterDisplayMode.setPreferredMode(
+                                          modes[i]);
+                                      if (context.mounted) {
+                                        Navigator.of(context).pop();
+                                      }
+                                    },
+                                  )));
+                    });
+              },
+            ),
         ],
       ),
     );
@@ -952,10 +955,7 @@ class _DownloadsSettingsState extends State<DownloadsSettings> {
                           )));
                 }
               } else {
-                Fluttertoast.showToast(
-                    msg: 'Storage permission denied!'.i18n,
-                    toastLength: Toast.LENGTH_SHORT,
-                    gravity: ToastGravity.BOTTOM);
+                showToast('Storage permission denied!');
                 return;
               }
             },
@@ -1286,12 +1286,7 @@ class _GeneralSettingsState extends State<GeneralSettings> {
                         if (v) {
                           setState(() => settings.offlineMode = false);
                         } else {
-                          Fluttertoast.showToast(
-                              msg:
-                                  'Error logging in, check your internet connections.'
-                                      .i18n,
-                              gravity: ToastGravity.BOTTOM,
-                              toastLength: Toast.LENGTH_SHORT);
+                          showToast('Error logging in, check your internet connections.');
                         }
                         if (context.mounted) Navigator.of(context).pop();
                       });
@@ -1314,25 +1309,24 @@ class _GeneralSettingsState extends State<GeneralSettings> {
             leading: const Icon(Icons.lock),
             onTap: () async {
               await FlutterClipboard.copy(settings.arl ?? '');
-              await Fluttertoast.showToast(
-                msg: 'Copied'.i18n,
-              );
+              await showToast('Copied');
             },
           ),
-          ListTile(
-            title: Text('Enable equalizer'.i18n),
-            subtitle: Text(
-                'Might enable some equalizer apps to work. Requires restart of ReFreezer'
-                    .i18n),
-            leading: const Icon(Icons.equalizer),
-            trailing: Switch(
-              value: settings.enableEqualizer,
-              onChanged: (v) async {
-                setState(() => settings.enableEqualizer = v);
-                settings.save();
-              },
+          if (Platform.isAndroid)
+            ListTile(
+              title: Text('Enable equalizer'.i18n),
+              subtitle: Text(
+                  'Might enable some equalizer apps to work. Requires restart of ReFreezer'
+                      .i18n),
+              leading: const Icon(Icons.equalizer),
+              trailing: Switch(
+                value: settings.enableEqualizer,
+                onChanged: (v) async {
+                  setState(() => settings.enableEqualizer = v);
+                  settings.save();
+                },
+              ),
             ),
-          ),
           ListTile(
             title: Text('LastFM'.i18n),
             subtitle: Text((settings.lastFMUsername != null)
@@ -1348,7 +1342,7 @@ class _GeneralSettingsState extends State<GeneralSettings> {
                 await GetIt.I<AudioPlayerHandler>().disableLastFM();
                 //await GetIt.I<AudioPlayerHandler>().customAction('disableLastFM', Map<String, dynamic>());
                 setState(() {});
-                Fluttertoast.showToast(msg: 'Logged out!'.i18n);
+                showToast('Logged out!');
                 return;
               } else {
                 showDialog(
@@ -1420,7 +1414,9 @@ class _GeneralSettingsState extends State<GeneralSettings> {
                                 }
                               }
                               await logOut();
-                              await DownloadManager.platform.invokeMethod('kill');
+                              if (Platform.isAndroid) {
+                                await DownloadManager.platform.invokeMethod('kill');
+                              }
                               //SystemNavigator.pop();
                               Restart.restartApp();
                             },
@@ -1482,7 +1478,7 @@ class _LastFMLoginState extends State<LastFMLogin> {
                   password: _password);
             } catch (e) {
               Logger.root.severe('Error authorizing LastFM: $e');
-              Fluttertoast.showToast(msg: 'Authorization error!'.i18n);
+              showToast('Authorization error!');
               return;
             }
             //Save
@@ -1672,9 +1668,7 @@ class _DirectoryPickerState extends State<DirectoryPicker> {
                 onTap: () {
                   setState(() {
                     if (_root == _path) {
-                      Fluttertoast.showToast(
-                          msg: 'Permission denied'.i18n,
-                          gravity: ToastGravity.BOTTOM);
+                      showToast('Permission denied');
                       return;
                     }
                     _previous = _path;

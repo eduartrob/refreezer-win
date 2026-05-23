@@ -1,10 +1,11 @@
 import 'dart:io';
+import '../utils/toast_utils.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+
 import 'package:logging/logging.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -588,10 +589,7 @@ class _EmailLoginState extends State<EmailLogin> {
               if (_email != null && _password != null) {
                 await _login();
               } else {
-                Fluttertoast.showToast(
-                    msg: 'Missing email or password!'.i18n,
-                    gravity: ToastGravity.BOTTOM,
-                    toastLength: Toast.LENGTH_SHORT);
+                showToast('Missing email or password!');
               }
             },
           )

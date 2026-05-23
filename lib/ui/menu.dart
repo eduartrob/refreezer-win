@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:io';
+import '../utils/toast_utils.dart';
 
 import 'package:flutter/material.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+import 'package:flutter/services.dart';
+
 import 'package:get_it/get_it.dart';
 import 'package:numberpicker/numberpicker.dart';
 import 'package:share_plus/share_plus.dart';
@@ -174,8 +177,7 @@ class MenuSheet {
         if (await downloadManager.checkOffline(playlist: p)) {
           downloadManager.addOfflinePlaylist(p);
         }
-        Fluttertoast.showToast(
-            msg: 'Added to library'.i18n, gravity: ToastGravity.BOTTOM, toastLength: Toast.LENGTH_SHORT);
+        showToast('Added to library');
         //Add to cache
         cache.libraryTracks ??= [];
         cache.libraryTracks?.add(t.id!);
@@ -210,11 +212,7 @@ class MenuSheet {
                       if (await downloadManager.checkOffline(playlist: p)) {
                         downloadManager.addOfflinePlaylist(p);
                       }
-                      Fluttertoast.showToast(
-                        msg: 'Track added to'.i18n + ' ${p.title}',
-                        toastLength: Toast.LENGTH_SHORT,
-                        gravity: ToastGravity.BOTTOM,
-                      );
+                      showToast('Track added to');
                     });
               });
           if (context.mounted) _close(context);
@@ -226,11 +224,7 @@ class MenuSheet {
         leading: const Icon(Icons.delete),
         onTap: () async {
           await deezerAPI.removeFromPlaylist(t.id!, p.id!);
-          Fluttertoast.showToast(
-            msg: 'Track removed from'.i18n + ' ${p.title}',
-            toastLength: Toast.LENGTH_SHORT,
-            gravity: ToastGravity.BOTTOM,
-          );
+          showToast('Track removed from');
           if (context.mounted) _close(context);
         },
       );
@@ -247,8 +241,7 @@ class MenuSheet {
           }
           //Remove from cache
           cache.libraryTracks?.removeWhere((i) => i == t.id);
-          Fluttertoast.showToast(
-              msg: 'Track removed from library'.i18n, toastLength: Toast.LENGTH_SHORT, gravity: ToastGravity.BOTTOM);
+          showToast('Track removed from library');
           if (onUpdate != null) onUpdate();
           if (context.mounted) _close(context);
         },
@@ -304,10 +297,7 @@ class MenuSheet {
             onTap: () async {
               if (isOffline) {
                 await downloadManager.removeOfflineTracks([track]);
-                Fluttertoast.showToast(
-                    msg: 'Track removed from offline!'.i18n,
-                    gravity: ToastGravity.BOTTOM,
-                    toastLength: Toast.LENGTH_SHORT);
+                showToast('Track removed from offline!');
               } else {
                 await downloadManager.addOfflineTrack(track, private: true);
               }
@@ -365,7 +355,7 @@ class MenuSheet {
         leading: const Icon(Icons.library_music),
         onTap: () async {
           await deezerAPI.addFavoriteAlbum(a.id!);
-          Fluttertoast.showToast(msg: 'Added to library'.i18n, gravity: ToastGravity.BOTTOM);
+          showToast('Added to library');
           if (context.mounted) _close(context);
         },
       );
@@ -377,11 +367,7 @@ class MenuSheet {
         onTap: () async {
           await deezerAPI.removeAlbum(a.id!);
           await downloadManager.removeOfflineAlbum(a.id!);
-          Fluttertoast.showToast(
-            msg: 'Album removed'.i18n,
-            toastLength: Toast.LENGTH_SHORT,
-            gravity: ToastGravity.BOTTOM,
-          );
+          showToast('Album removed');
           onRemove();
           if (context.mounted) _close(context);
         },
@@ -409,8 +395,7 @@ class MenuSheet {
         leading: const Icon(Icons.delete),
         onTap: () async {
           await deezerAPI.removeArtist(a.id!);
-          Fluttertoast.showToast(
-              msg: 'Artist removed from library'.i18n, toastLength: Toast.LENGTH_SHORT, gravity: ToastGravity.BOTTOM);
+          showToast('Artist removed from library');
           if (onRemove != null) onRemove();
           if (context.mounted) _close(context);
         },
@@ -421,8 +406,7 @@ class MenuSheet {
         leading: const Icon(Icons.favorite),
         onTap: () async {
           await deezerAPI.addFavoriteArtist(a.id!);
-          Fluttertoast.showToast(
-              msg: 'Added to library'.i18n, toastLength: Toast.LENGTH_SHORT, gravity: ToastGravity.BOTTOM);
+          showToast('Added to library');
           if (context.mounted) _close(context);
         },
       );
@@ -471,7 +455,7 @@ class MenuSheet {
         leading: const Icon(Icons.favorite),
         onTap: () async {
           await deezerAPI.addPlaylist(p.id!);
-          Fluttertoast.showToast(msg: 'Added playlist to library'.i18n, gravity: ToastGravity.BOTTOM);
+          showToast('Added playlist to library');
           if (context.mounted) _close(context);
         },
       );
@@ -521,7 +505,13 @@ class MenuSheet {
         title: Text('Share show'.i18n),
         leading: const Icon(Icons.share),
         onTap: () async {
-          Share.share('https://deezer.com/show/$id');
+          final url = 'https://deezer.com/show/$id';
+          if (Platform.isAndroid || Platform.isIOS) {
+            Share.share(url);
+          } else {
+            await Clipboard.setData(ClipboardData(text: url));
+            showToast('Link copied to clipboard'.i18n);
+          }
         },
       );
 
@@ -539,7 +529,7 @@ class MenuSheet {
   //===================
 
   showDownloadStartedToast() {
-    Fluttertoast.showToast(msg: 'Downloads added!'.i18n, gravity: ToastGravity.BOTTOM, toastLength: Toast.LENGTH_SHORT);
+    showToast('Downloads added!');
   }
 
   //Create playlist
@@ -555,7 +545,14 @@ class MenuSheet {
         title: Text('Share'.i18n),
         leading: const Icon(Icons.share),
         onTap: () async {
-          Share.share('https://deezer.com/$type/$id');
+          final url = 'https://deezer.com/$type/$id';
+          if (Platform.isAndroid || Platform.isIOS) {
+            Share.share(url);
+          } else {
+            // Desktop: copy to clipboard
+            await Clipboard.setData(ClipboardData(text: url));
+            showToast('Link copied to clipboard'.i18n);
+          }
         },
       );
 
@@ -571,7 +568,10 @@ class MenuSheet {
         },
       );
 
-  Widget wakelock(BuildContext context) => ListTile(
+  /// Wakelock option — only shown on mobile (makes no sense on desktop)
+  Widget wakelock(BuildContext context) {
+    if (!Platform.isAndroid && !Platform.isIOS) return const SizedBox.shrink();
+    return ListTile(
         title: Text(cache.wakelock ? 'Allow screen to turn off'.i18n : 'Keep the screen on'.i18n),
         leading: const Icon(Icons.screen_lock_portrait),
         onTap: () async {
@@ -579,16 +579,17 @@ class MenuSheet {
           //Enable
           if (!cache.wakelock) {
             WakelockPlus.enable();
-            Fluttertoast.showToast(msg: 'Wakelock enabled!'.i18n, gravity: ToastGravity.BOTTOM);
+            showToast('Wakelock enabled!'.i18n);
             cache.wakelock = true;
             return;
           }
           //Disable
           WakelockPlus.disable();
-          Fluttertoast.showToast(msg: 'Wakelock disabled!'.i18n, gravity: ToastGravity.BOTTOM);
+          showToast('Wakelock disabled!'.i18n);
           cache.wakelock = false;
         },
       );
+  }
 
   void _close(BuildContext context) => Navigator.of(context).pop();
 }
@@ -840,13 +841,13 @@ class _CreatePlaylistDialogState extends State<CreatePlaylistDialog> {
               await deezerAPI.updatePlaylist(
                   widget.playlist!.id!, _titleController!.value.text, _descController!.value.text,
                   status: _playlistType);
-              Fluttertoast.showToast(msg: 'Playlist updated!'.i18n, gravity: ToastGravity.BOTTOM);
+              showToast('Playlist updated!');
             } else {
               List<String> tracks = [];
               tracks = widget.tracks?.map<String>((t) => t.id!).toList() ?? [];
               await deezerAPI.createPlaylist(_title,
                   status: _playlistType, description: _description, trackIds: tracks);
-              Fluttertoast.showToast(msg: 'Playlist created!'.i18n, gravity: ToastGravity.BOTTOM);
+              showToast('Playlist created!');
             }
             if (context.mounted) Navigator.of(context).pop();
           },

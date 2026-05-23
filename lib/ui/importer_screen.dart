@@ -1,9 +1,10 @@
 import 'dart:async';
+import '../utils/toast_utils.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+
 import 'package:spotify/spotify.dart' as spotify;
 import 'package:url_launcher/url_launcher_string.dart';
 
@@ -444,10 +445,7 @@ class _SpotifyImporterV2State extends State<SpotifyImporterV2> {
               onPressed: () async {
                 await Clipboard.setData(
                     const ClipboardData(text: 'http://localhost:42069'));
-                Fluttertoast.showToast(
-                    msg: 'Copied'.i18n,
-                    gravity: ToastGravity.BOTTOM,
-                    toastLength: Toast.LENGTH_SHORT);
+                showToast('Copied');
               },
             ),
           ),
@@ -544,10 +542,7 @@ class _SpotifyImporterV2MainState extends State<SpotifyImporterV2Main> {
         _urlPlaylist = playlist;
       });
     } catch (e) {
-      Fluttertoast.showToast(
-          msg: 'Invalid/Unsupported URL'.i18n,
-          gravity: ToastGravity.BOTTOM,
-          toastLength: Toast.LENGTH_SHORT);
+      showToast('Invalid/Unsupported URL');
       setState(() => _urlLoading = false);
       return;
     }
@@ -585,10 +580,7 @@ class _SpotifyImporterV2MainState extends State<SpotifyImporterV2Main> {
             builder: (context) => const ImporterStatusScreen()));
       }
     } catch (e) {
-      Fluttertoast.showToast(
-          msg: e.toString(),
-          gravity: ToastGravity.BOTTOM,
-          toastLength: Toast.LENGTH_SHORT);
+      showToast(e.toString();
       if (mounted) Navigator.of(context).pop();
       return;
     }

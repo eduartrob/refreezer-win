@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../utils/toast_utils.dart';
 import 'dart:io';
 
 import 'package:disk_space_plus/disk_space_plus.dart';
@@ -6,7 +7,7 @@ import 'package:filesize/filesize.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -766,10 +767,7 @@ class DownloadManager {
     )) {
       return true;
     } else {
-      Fluttertoast.showToast(
-          msg: 'Storage permission denied!'.i18n,
-          toastLength: Toast.LENGTH_SHORT,
-          gravity: ToastGravity.BOTTOM);
+      showToast('Storage permission denied!');
       return false;
     }
   }

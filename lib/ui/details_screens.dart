@@ -1,8 +1,9 @@
 // ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'package:draggable_scrollbar/draggable_scrollbar.dart';
+import '../utils/toast_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttericon/font_awesome5_icons.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+
 import 'package:get_it/get_it.dart';
 
 import '../api/cache.dart';
@@ -188,19 +189,13 @@ class _AlbumDetailsState extends State<AlbumDetails> {
                               //Add to library
                               if (!(album.library ?? false)) {
                                 await deezerAPI.addFavoriteAlbum(album.id ?? '');
-                                Fluttertoast.showToast(
-                                    msg: 'Added to library'.i18n,
-                                    toastLength: Toast.LENGTH_SHORT,
-                                    gravity: ToastGravity.BOTTOM);
+                                showToast('Added to library');
                                 setState(() => album.library = true);
                                 return;
                               }
                               //Remove
                               await deezerAPI.removeAlbum(album.id ?? '');
-                              Fluttertoast.showToast(
-                                  msg: 'Album removed from library!'.i18n,
-                                  toastLength: Toast.LENGTH_SHORT,
-                                  gravity: ToastGravity.BOTTOM);
+                              showToast('Album removed from library!');
                               setState(() => album.library = false);
                             },
                           ),
@@ -296,8 +291,7 @@ class _MakeAlbumOfflineState extends State<MakeAlbumOffline> {
               return;
             }
             downloadManager.removeOfflineAlbum(widget.album?.id ?? '');
-            Fluttertoast.showToast(
-                msg: 'Removed album from offline!'.i18n, gravity: ToastGravity.BOTTOM, toastLength: Toast.LENGTH_SHORT);
+            showToast('Removed album from offline!');
             setState(() {
               _offline = false;
             });
@@ -443,10 +437,7 @@ class _ArtistDetailsState extends State<ArtistDetails> {
                             ),
                             onPressed: () async {
                               await deezerAPI.addFavoriteArtist(artist.id ?? '');
-                              Fluttertoast.showToast(
-                                  msg: 'Added to library'.i18n,
-                                  toastLength: Toast.LENGTH_SHORT,
-                                  gravity: ToastGravity.BOTTOM);
+                              showToast('Added to library');
                             },
                           ),
                           if ((artist.radio ?? false))
@@ -990,17 +981,13 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                     //Add to library
                     if (!(playlist.library ?? false)) {
                       await deezerAPI.addPlaylist(playlist.id!);
-                      Fluttertoast.showToast(
-                          msg: 'Added to library'.i18n, toastLength: Toast.LENGTH_SHORT, gravity: ToastGravity.BOTTOM);
+                      showToast('Added to library');
                       setState(() => playlist.library = true);
                       return;
                     }
                     //Remove
                     await deezerAPI.removePlaylist(playlist.id!);
-                    Fluttertoast.showToast(
-                        msg: 'Playlist removed from library!'.i18n,
-                        toastLength: Toast.LENGTH_SHORT,
-                        gravity: ToastGravity.BOTTOM);
+                    showToast('Playlist removed from library!');
                     setState(() => playlist.library = false);
                   },
                 ),
@@ -1143,10 +1130,7 @@ class _MakePlaylistOfflineState extends State<MakePlaylistOffline> {
               return;
             }
             downloadManager.removeOfflinePlaylist(widget.playlist.id!);
-            Fluttertoast.showToast(
-                msg: 'Playlist removed from offline!'.i18n,
-                gravity: ToastGravity.BOTTOM,
-                toastLength: Toast.LENGTH_SHORT);
+            showToast('Playlist removed from offline!');
             setState(() {
               _offline = false;
             });
