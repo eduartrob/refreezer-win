@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -162,15 +163,30 @@ class StreamServerDart {
     final mv = params['mv'] ?? '';
     final md5origin = params['md5origin'] ?? '';
 
-    // Build the CDN URL — delegates to DeezerAPI in Dart (already implemented)
-    // We replicate the QualityInfo fallback logic here
-    String? cdnUrl = await _resolveCdnUrl(
-      quality: quality,
-      trackId: streamTrackId,
-      trackToken: trackToken,
-      md5origin: md5origin,
-      mediaVersion: mv,
-    );
+    // Build the CDN URL with fallback logic
+    String? cdnUrl;
+    int currentQuality = quality;
+
+    while (currentQuality > 0) {
+      cdnUrl = await _resolveCdnUrl(
+        quality: currentQuality,
+        trackId: streamTrackId,
+        trackToken: trackToken,
+        md5origin: md5origin,
+        mediaVersion: mv,
+      );
+
+      if (cdnUrl != null) break;
+
+      // Fallback
+      if (currentQuality == 9) {
+        currentQuality = 3;
+      } else if (currentQuality == 3) {
+        currentQuality = 1;
+      } else {
+        break;
+      }
+    }
 
     if (cdnUrl == null) {
       request.response.statusCode = HttpStatus.notFound;
@@ -190,7 +206,7 @@ class StreamServerDart {
     final cdnResponse = await http.Client().send(cdnRequest);
     final contentLength = cdnResponse.contentLength ?? 0;
 
-    final isFlac = quality == 9;
+    final isFlac = currentQuality == 9;
     final contentType = isFlac ? 'audio/flac' : 'audio/mpeg';
 
     request.response.statusCode =
@@ -233,7 +249,6 @@ class StreamServerDart {
         counter++;
 
         if (dropped > 0) {
-          final keep = 2048 - dropped;
           request.response.add(outBlock.sublist(dropped));
           dropped = 0;
         } else {
@@ -289,11 +304,17 @@ class StreamServerDart {
         body: payload,
       );
 
-      final body = response.body;
-      // Simple JSON parse to extract URL
-      final urlMatch = RegExp(r'"url"\s*:\s*"([^"]+)"').firstMatch(body);
-      if (urlMatch != null) {
-        return urlMatch.group(1);
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      // Parse the CDN URL from the Deezer media API response
+      final dataList = body['data'] as List?;
+      if (dataList != null && dataList.isNotEmpty) {
+        final media = (dataList[0] as Map)['media'] as List?;
+        if (media != null && media.isNotEmpty) {
+          final sources = (media[0] as Map)['sources'] as List?;
+          if (sources != null && sources.isNotEmpty) {
+            return (sources[0] as Map)['url'] as String?;
+          }
+        }
       }
     } catch (e) {
       _log.warning('Error resolving CDN URL: $e');
