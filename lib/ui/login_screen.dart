@@ -234,8 +234,8 @@ class _LoginWidgetState extends State<LoginWidget> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'On Windows, use "Login using token (ARL)" below. '
-                          'Open deezer.com in your browser, log in, and copy your ARL cookie.',
+                          'On Windows: use "Login using browser" (requires Edge WebView2) '
+                          'or "Login using token (ARL)" if the browser option does not work.',
                           style: TextStyle(color: Colors.amber.shade200, fontSize: 13),
                         ),
                       ),
@@ -263,23 +263,17 @@ class _LoginWidgetState extends State<LoginWidget> {
                 ),
               ),
 
-            // ── Browser login (disabled on desktop) ──────────────────
-            if (_isDesktop)
-              _disabledOnDesktop(
-                label: 'Login using browser'.i18n,
-                reason: 'Built-in browser not available on Windows — use token login below',
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                child: OutlinedButton(
-                  child: Text('Login using browser'.i18n),
-                  onPressed: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                        builder: (context) => LoginBrowser(_update)));
-                  },
-                ),
+            // ── Browser login (works on desktop via WebView2) ─────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32.0),
+              child: OutlinedButton(
+                child: Text('Login using browser'.i18n),
+                onPressed: () {
+                  Navigator.of(context).push(MaterialPageRoute(
+                      builder: (context) => LoginBrowser(_update)));
+                },
               ),
+            ),
 
             // ── Token / ARL login (always available, highlighted on desktop) ──
             Padding(
@@ -392,50 +386,116 @@ class _LoginWidgetState extends State<LoginWidget> {
 }
 
 
-class LoginBrowser extends StatelessWidget {
+class LoginBrowser extends StatefulWidget {
   final Function updateParent;
   const LoginBrowser(this.updateParent, {super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: <Widget>[
-        Expanded(
-          child: InAppWebView(
-            initialUrlRequest:
-                URLRequest(url: WebUri('https://deezer.com/login')),
-            onLoadStart:
-                (InAppWebViewController controller, WebUri? loadedUri) async {
-              //Offers URL
-              if (!loadedUri!.path.contains('/login') &&
-                  !loadedUri.path.contains('/register')) {
-                controller.evaluateJavascript(
-                    source: 'window.location.href = "/open_app"');
-              }
+  State<LoginBrowser> createState() => _LoginBrowserState();
+}
 
-              //Parse arl from url
-              if (loadedUri
-                      .toString()
-                      .startsWith('intent://deezer.page.link') ||
-                  loadedUri.toString().startsWith('intent://dzr.page.link')) {
-                try {
-                  //Actual url is in `link` query parameter
-                  Uri linkUri = Uri.parse(loadedUri.queryParameters['link']!);
-                  String? arl = linkUri.queryParameters['arl'];
-                  settings.arl = arl;
-                  // Clear cookies for next login after logout
-                  CookieManager.instance().deleteAllCookies();
-                  Navigator.of(context).pop();
-                  updateParent();
-                } catch (e) {
-                  Logger.root
-                      .severe('Error loading ARL from browser login: $e');
-                }
-              }
-            },
-          ),
+class _LoginBrowserState extends State<LoginBrowser> {
+  bool _isDesktop = !Platform.isAndroid && !Platform.isIOS;
+  bool _extracting = false;
+
+  /// On desktop, Deezer doesn't redirect to intent:// — it just lands on the
+  /// homepage. We read the 'arl' cookie directly from the webview instead.
+  Future<void> _tryExtractArlFromCookies(
+      InAppWebViewController controller, WebUri? url) async {
+    if (_extracting) return;
+    if (url == null) return;
+
+    final path = url.path;
+    // Still on login/register page — user hasn't finished logging in yet
+    if (path.contains('/login') || path.contains('/register')) return;
+
+    _extracting = true;
+    try {
+      final cookieManager = CookieManager.instance();
+      final cookies = await cookieManager.getCookies(
+          webViewController: controller,
+          url: WebUri('https://www.deezer.com'));
+
+      final arlCookie = cookies.firstWhere(
+        (c) => c.name == 'arl',
+        orElse: () => Cookie(name: 'arl', value: null),
+      );
+
+      final arl = arlCookie.value?.toString();
+      if (arl != null && arl.isNotEmpty) {
+        Logger.root.info('ARL extracted from cookie (desktop login)');
+        settings.arl = arl;
+        await cookieManager.deleteAllCookies();
+        if (mounted) {
+          Navigator.of(context).pop();
+          widget.updateParent();
+        }
+      } else {
+        // Cookie not set yet — user may not have completed login
+        _extracting = false;
+      }
+    } catch (e) {
+      Logger.root.severe('Error extracting ARL from cookie: $e');
+      _extracting = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Login'.i18n),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.of(context).pop(),
         ),
-      ],
+      ),
+      body: InAppWebView(
+        initialUrlRequest:
+            URLRequest(url: WebUri('https://www.deezer.com/login')),
+        onLoadStart:
+            (InAppWebViewController controller, WebUri? loadedUri) async {
+          if (loadedUri == null) return;
+
+          // ── Android path: extract ARL from intent:// redirect ──────
+          if (!_isDesktop) {
+            // Redirect non-login/register pages to /open_app to trigger
+            // the intent:// redirect with the ARL
+            if (!loadedUri.path.contains('/login') &&
+                !loadedUri.path.contains('/register')) {
+              controller.evaluateJavascript(
+                  source: 'window.location.href = "/open_app"');
+            }
+
+            if (loadedUri.toString().startsWith('intent://deezer.page.link') ||
+                loadedUri
+                    .toString()
+                    .startsWith('intent://dzr.page.link')) {
+              try {
+                Uri linkUri =
+                    Uri.parse(loadedUri.queryParameters['link']!);
+                String? arl = linkUri.queryParameters['arl'];
+                settings.arl = arl;
+                CookieManager.instance().deleteAllCookies();
+                if (mounted) {
+                  Navigator.of(context).pop();
+                  widget.updateParent();
+                }
+              } catch (e) {
+                Logger.root
+                    .severe('Error loading ARL from browser login: $e');
+              }
+            }
+          }
+        },
+        onLoadStop:
+            (InAppWebViewController controller, WebUri? loadedUri) async {
+          // ── Desktop path: extract ARL from cookie after page load ──
+          if (_isDesktop) {
+            await _tryExtractArlFromCookies(controller, loadedUri);
+          }
+        },
+      ),
     );
   }
 }
