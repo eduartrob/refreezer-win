@@ -441,17 +441,25 @@ class AudioPlayerHandler extends BaseAudioHandler
 
   Future<void> _startSession() async {
     Logger.root.info('starting audio service...');
-    final session = await AudioSession.instance;
-    await session.configure(const AudioSessionConfiguration.music());
 
     if (settings.ignoreInterruptions == true) {
       _player = AudioPlayer(handleInterruptions: false);
-      // Handle audio interruptions. (ignore)
-      session.interruptionEventStream.listen((_) {});
-      // Handle unplugged headphones. (ignore)
-      session.becomingNoisyEventStream.listen((_) {});
     } else {
       _player = AudioPlayer();
+    }
+
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration.music());
+
+      if (settings.ignoreInterruptions == true) {
+        // Handle audio interruptions. (ignore)
+        session.interruptionEventStream.listen((_) {});
+        // Handle unplugged headphones. (ignore)
+        session.becomingNoisyEventStream.listen((_) {});
+      }
+    } catch (e) {
+      Logger.root.warning('AudioSession not fully supported on this platform: $e');
     }
 
     _loadEmptyPlaylist()
@@ -546,7 +554,7 @@ class AudioPlayerHandler extends BaseAudioHandler
     File f = File(p.join(offlinePath, mediaItem.id));
     if (await f.exists()) {
       //Stream server URL (same port, Dart server on desktop)
-      return 'http://localhost:36958/?id=${mediaItem.id}';
+      return 'http://127.0.0.1:36958/?id=${mediaItem.id}';
     }
 
     //Show episode direct link
@@ -572,7 +580,7 @@ class AudioPlayerHandler extends BaseAudioHandler
 
     if ((streamPlaybackDetails ?? []).length < 3) return null;
     String url =
-        'http://localhost:36958/?q=$quality&id=${mediaItem.id}&streamTrackId=$streamItemId&trackToken=${streamPlaybackDetails?[2]}&mv=${streamPlaybackDetails?[1]}&md5origin=${streamPlaybackDetails?[0]}';
+        'http://127.0.0.1:36958/?q=$quality&id=${mediaItem.id}&streamTrackId=$streamItemId&trackToken=${streamPlaybackDetails?[2]}&mv=${streamPlaybackDetails?[1]}&md5origin=${streamPlaybackDetails?[0]}';
     return url;
   }
 
