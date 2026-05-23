@@ -24,9 +24,9 @@ import '../translations.i18n.dart';
 import '../utils/mediaitem_converter.dart';
 // Conditional imports for Android-only components
 import '../ui/android_auto.dart'
-    if (dart.library.ffi) '../ui/android_auto_stub.dart';
+    if (dart.library.html) '../ui/android_auto_stub.dart';
 import 'package:equalizer_flutter/equalizer_flutter.dart'
-    if (dart.library.ffi) '../utils/equalizer_stub.dart';
+    if (dart.library.html) '../utils/equalizer_stub.dart';
 
 Future<AudioPlayerHandler> initAudioService() async {
   return await AudioService.init(

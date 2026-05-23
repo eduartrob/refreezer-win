@@ -22,7 +22,6 @@ import 'package:move_to_background/move_to_background.dart'
 import 'package:permission_handler/permission_handler.dart';
 import 'package:quick_actions/quick_actions.dart'
     if (dart.library.html) 'package:refreezer/utils/stub_quick_actions.dart';
-//import 'package:restart_app/restart_app.dart';
 
 import 'api/cache.dart';
 import 'api/deezer.dart';
@@ -255,36 +254,42 @@ class _MainScreenState extends State<MainScreen>
   }
 
   Future<void> _init() async {
-    // Set display mode — Android only
-    if (Platform.isAndroid && (settings.displayMode ?? -1) >= 0) {
-      FlutterDisplayMode.supported.then((modes) async {
-        if (modes.length - 1 >= settings.displayMode!.toInt()) {
-          FlutterDisplayMode.setPreferredMode(
-              modes[settings.displayMode!.toInt()]);
-        }
+    try {
+      // Set display mode — Android only
+      if (Platform.isAndroid && (settings.displayMode ?? -1) >= 0) {
+        FlutterDisplayMode.supported.then((modes) async {
+          if (modes.length - 1 >= settings.displayMode!.toInt()) {
+            FlutterDisplayMode.setPreferredMode(
+                modes[settings.displayMode!.toInt()]);
+          }
+        });
+      }
+
+      _preloadFavoriteTracksToCache();
+      _initDownloadManager();
+      _startStreamingServer();
+      await _setupServiceLocator();
+
+      //Do on BG
+      GetIt.I<AudioPlayerHandler>().authorizeLastFM();
+
+      //Start with parameters
+      _setupDeepLinks();
+      _loadPreloadInfo();
+      _prepareQuickActions();
+
+      //Check for updates on background
+      Future.delayed(const Duration(seconds: 5), () {
+        ReFreezerLatest.checkUpdate();
       });
+
+      //Restore saved queue
+      _loadSavedQueue();
+    } catch (e, st) {
+      Logger.root.severe('Fatal error during MainScreen initialization', e, st);
+      // Rethrow so FutureBuilder can show error state
+      rethrow;
     }
-
-    _preloadFavoriteTracksToCache();
-    _initDownloadManager();
-    _startStreamingServer();
-    await _setupServiceLocator();
-
-    //Do on BG
-    GetIt.I<AudioPlayerHandler>().authorizeLastFM();
-
-    //Start with parameters
-    _setupDeepLinks();
-    _loadPreloadInfo();
-    _prepareQuickActions();
-
-    //Check for updates on background
-    Future.delayed(const Duration(seconds: 5), () {
-      ReFreezerLatest.checkUpdate();
-    });
-
-    //Restore saved queue
-    _loadSavedQueue();
   }
 
   void _preloadFavoriteTracksToCache() async {
@@ -463,6 +468,30 @@ class _MainScreenState extends State<MainScreen>
     return FutureBuilder(
       future: _initialization,
       builder: (context, snapshot) {
+        // Handle initialization errors — show them instead of blank/infinite spinner
+        if (snapshot.hasError) {
+          return Scaffold(
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                    const SizedBox(height: 16),
+                    const Text('Initialization Error',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text(snapshot.error.toString(),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
         // Check _initialization status
         if (snapshot.connectionState == ConnectionState.done) {
           // When _initialization is done, render app

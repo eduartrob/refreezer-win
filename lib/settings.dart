@@ -230,9 +230,15 @@ class Settings {
       return Settings.fromJson(jsonDecode(data));
     }
     Settings s = Settings.fromJson({});
-    //Set default path, because async
-    s.downloadPath = (await ExternalPath.getExternalStoragePublicDirectory(
-        ExternalPath.DIRECTORY_MUSIC));
+    //Set default path — use platform-appropriate path
+    if (Platform.isAndroid) {
+      s.downloadPath = (await ExternalPath.getExternalStoragePublicDirectory(
+          ExternalPath.DIRECTORY_MUSIC));
+    } else {
+      // Desktop: use Music folder inside user documents
+      final docsDir = await getApplicationDocumentsDirectory();
+      s.downloadPath = p.join(docsDir.path, 'ReFreezer', 'Music');
+    }
     s.save();
     return s;
   }
