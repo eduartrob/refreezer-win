@@ -78,7 +78,7 @@ class DownloadManager {
       await oldDbFile.delete();
     }
 
-    String dbPath = p.join((await getDatabasesPath()), 'offline2.db');
+    String dbPath = p.join((await getDatabasesPath()), 'offline3.db');
     //Open db
     db = await openDatabase(dbPath, version: 1,
         onCreate: (Database db, int version) async {
@@ -91,6 +91,8 @@ class DownloadManager {
         id TEXT PRIMARY KEY, name TEXT, albums TEXT, topTracks TEXT, picture TEXT, fans INTEGER, albumCount INTEGER, offline INTEGER, library INTEGER, radio INTEGER)''');
       b.execute('''CREATE TABLE Playlists (
         id TEXT PRIMARY KEY, title TEXT, tracks TEXT, image TEXT, duration INTEGER, userId TEXT, userName TEXT, fans INTEGER, library INTEGER, description TEXT)''');
+      b.execute('''CREATE TABLE Downloads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, trackId TEXT, streamTrackId TEXT, trackToken TEXT, md5origin TEXT, mediaVersion TEXT, path TEXT, private INTEGER, quality INTEGER, title TEXT, image TEXT, state INTEGER)''');
       await b.commit();
     });
 

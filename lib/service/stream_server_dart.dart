@@ -55,7 +55,7 @@ class StreamServerDart {
   }
 
   Future<void> _handleRequest(HttpRequest request) async {
-    if (request.method != 'GET') {
+    if (request.method != 'GET' && request.method != 'HEAD') {
       request.response.statusCode = HttpStatus.methodNotAllowed;
       await request.response.close();
       return;
@@ -181,8 +181,7 @@ class StreamServerDart {
     // Align start to 2048 boundary for decryption (mirrors StreamServer.java)
     final deezerStart = startBytes - (startBytes % 2048);
     final dropBytes = startBytes % 2048;
-
-    final cdnRequest = http.Request('GET', Uri.parse(cdnUrl));
+    final cdnRequest = http.Request(request.method, Uri.parse(cdnUrl));
     cdnRequest.headers['User-Agent'] =
         'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.130 Safari/537.36';
     cdnRequest.headers['Range'] =
@@ -207,6 +206,11 @@ class StreamServerDart {
           'bytes $startBytes-$rangeEnd/${contentLength + deezerStart}');
     }
 
+    if (request.method == 'HEAD') {
+      await request.response.close();
+      return;
+    }
+
     // Stream with Blowfish decryption (every 3rd 2048-byte chunk)
     final key = DeezerDecryptorDart.getKey(streamTrackId);
     int counter = deezerStart ~/ 2048;
@@ -229,17 +233,21 @@ class StreamServerDart {
         counter++;
 
         if (dropped > 0) {
-          final output = outBlock.sublist(dropped);
+          final keep = 2048 - dropped;
+          request.response.add(outBlock.sublist(dropped));
           dropped = 0;
-          request.response.add(output);
         } else {
           request.response.add(outBlock);
         }
       }
     }
-    // Flush remaining bytes (incomplete chunk — not encrypted)
+    // Flush remaining buffer
     if (buffer.isNotEmpty) {
-      request.response.add(buffer);
+      if (dropped > 0) {
+        request.response.add(buffer.sublist(dropped));
+      } else {
+        request.response.add(buffer);
+      }
     }
 
     streams[trackId] = StreamInfo(
