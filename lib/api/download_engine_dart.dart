@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../api/deezer.dart';
 import '../utils/deezer_decryptor_dart.dart';
 
 final _log = Logger('DownloadEngineDart');
@@ -102,10 +103,6 @@ class DownloadEngineDart {
   final List<DownloadItemDart> _queue = [];
   int _activeCount = 0;
 
-  String? _arl;
-  String? _licenseToken;
-  bool _authorized = false;
-
   Database? _db;
   String? _offlinePath;
 
@@ -120,7 +117,7 @@ class DownloadEngineDart {
   }) async {
     _db = db;
     _offlinePath = offlinePath;
-    _arl = arl;
+    // arl is now read from deezerAPI global directly
   }
 
   Future<void> addDownloads(List<Map<dynamic, dynamic>> jsonList) async {
@@ -203,8 +200,7 @@ class DownloadEngineDart {
   }
 
   void updateSettings({String? arl, String? licenseToken}) {
-    _arl = arl;
-    _licenseToken = licenseToken;
+    // Settings now read from global deezerAPI directly - no-op kept for API compatibility
   }
 
   // ---------------------------------------------------------------
@@ -246,21 +242,28 @@ class DownloadEngineDart {
   }
 
   Future<void> _downloadTrack(DownloadItemDart item) async {
-    // Ensure authorized
-    if (!_authorized) {
-      await _authorize();
-    }
+    // CDN URL is resolved in _getCdnUrl which handles auth via global deezerAPI
 
     // Resolve CDN URL with quality fallback
     final cdnUrl = await _getCdnUrl(item);
     if (cdnUrl == null) {
-      item.state = DownloadStateDart.deezerError;
-      await _updateDb(item);
-      _emitProgress(item);
+      _log.warning('No CDN URL for track ${item.trackId} - token may be expired. Will retry authorize.');
+      // Try re-authorizing once via global deezerAPI
+      await deezerAPI.rawAuthorize();
+      final retryUrl = await _getCdnUrl(item);
+      if (retryUrl == null) {
+        item.state = DownloadStateDart.deezerError;
+        await _updateDb(item);
+        _emitProgress(item);
+        return;
+      }
+      await _startDownload(item, retryUrl);
       return;
     }
+    await _startDownload(item, cdnUrl);
+  }
 
-    // Generate output file path
+  Future<void> _startDownload(DownloadItemDart item, String cdnUrl) async {
     final outPath = item.private
         ? p.join(_offlinePath!, item.trackId)
         : _resolvePath(item);
@@ -356,33 +359,13 @@ class DownloadEngineDart {
     return path;
   }
 
-  Future<void> _authorize() async {
-    try {
-      // Build auth header from ARL
-      final response = await http.post(
-        Uri.https('www.deezer.com', '/ajax/gw-light.php', {
-          'method': 'deezer.getUserData',
-          'api_version': '1.0',
-          'api_token': 'null',
-          'input': '3',
-        }),
-        headers: {
-          'Cookie': 'arl=$_arl',
-          'User-Agent':
-              'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
-        },
-      );
-      final body = jsonDecode(response.body);
-      _licenseToken =
-          body['results']?['USER']?['OPTIONS']?['license_token'] as String?;
-      _authorized = true;
-    } catch (e) {
-      _log.warning('Authorization failed: $e');
-    }
-  }
-
   Future<String?> _getCdnUrl(DownloadItemDart item) async {
-    if (_licenseToken == null) return null;
+    // Use the global deezerAPI which already has the licenseToken from login
+    if (deezerAPI.licenseToken == null) {
+      _log.warning('licenseToken is null — re-authorizing via global deezerAPI');
+      await deezerAPI.rawAuthorize();
+    }
+    if (deezerAPI.licenseToken == null) return null;
 
     final formatMap = {9: 'FLAC', 3: 'MP3_320', 1: 'MP3_128'};
     int quality = item.quality;
@@ -390,7 +373,7 @@ class DownloadEngineDart {
     while (quality >= 1) {
       final format = formatMap[quality] ?? 'MP3_128';
       final payload = jsonEncode({
-        'license_token': _licenseToken,
+        'license_token': deezerAPI.licenseToken,
         'media': [
           {
             'type': 'FULL',
@@ -406,7 +389,7 @@ class DownloadEngineDart {
         final response = await http.post(
           Uri.parse('https://media.deezer.com/v1/get_url'),
           headers: {
-            'Cookie': 'arl=$_arl',
+            'Cookie': 'arl=${deezerAPI.arl}',
             'Content-Type': 'application/json',
           },
           body: payload,
